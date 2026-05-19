@@ -1,7 +1,11 @@
 #compdef dbt dbtf
 
-# Enable zsh's native completion cache for all dbt completions.
-zstyle ':completion:*:complete:dbt:*' use-cache yes
+# Enable zsh's native completion cache for both dbt and the dbtf alias.
+# _retrieve_cache / _store_cache check zstyle -t ":completion:${curcontext}:" use-cache,
+# and $curcontext contains the literal command name -- so the pattern must match
+# dbtf too or its cache writes silently no-op.
+# Docs: https://zsh.sourceforge.io/Doc/Release/Completion-System.html#Standard-Styles
+zstyle ':completion:*:complete:(dbt|dbtf):*' use-cache yes
 
 # Use zsh's stat module so we never fork stat(1). Avoids a real bug: with GNU
 # coreutils on the PATH (common on macOS via Homebrew), `stat -f` means
