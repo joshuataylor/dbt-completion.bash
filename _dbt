@@ -297,6 +297,14 @@ _dbt_bin_info() {
 
 # Detects whether dbt is dbt-core (click) or dbt-fusion (clap).
 # Prints "core" or "fusion". Cached by binary path + mtime.
+#
+# Detection is by file shape, not by invoking the binary:
+#   - dbt-core ships as a Python entry-point script written by setuptools,
+#     which always begins with a "#!" shebang.
+#   - dbt-fusion is a compiled Rust binary (Mach-O / ELF), starting with
+#     architecture-specific magic bytes that are never "#!".
+# Reading two bytes is ~free; invoking `dbt --help` was ~750ms on the
+# first TAB in a fresh shell.
 _dbt_detect_type() {
     _dbt_bin_info || return 1
     local bin_path="${reply[1]}" bin_mtime="${reply[2]}"
@@ -307,10 +315,16 @@ _dbt_detect_type() {
 
     typeset -g _dbt_binary_type_cache
     if ! _retrieve_cache "dbt_binary_type_${path_hash}_${bin_mtime}"; then
-        local first_line
-        first_line=$(dbt --help 2>/dev/null | head -1)
-        _dbt_binary_type_cache="core"
-        [[ "$first_line" == *"dbt-fusion"* ]] && _dbt_binary_type_cache="fusion"
+        local first_two=""
+        # `read -k 2 -u 0 var < file` reads exactly two bytes from the file
+        # without forking. `{ read } < file` alone doesn't work for -k; the
+        # explicit -u 0 plus the redirection is the idiom that does.
+        read -k 2 -u 0 first_two < "$bin_path" 2>/dev/null
+        if [[ "$first_two" == "#!" ]]; then
+            _dbt_binary_type_cache="core"
+        else
+            _dbt_binary_type_cache="fusion"
+        fi
         _store_cache "dbt_binary_type_${path_hash}_${bin_mtime}" _dbt_binary_type_cache
     fi
 
