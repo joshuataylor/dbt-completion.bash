@@ -206,6 +206,13 @@ _get_project_root() {
 
 # Resolves the manifest path from $DBT_MANIFEST_PATH or the project root.
 # Prints the path to stdout; returns 1 if the file does not exist.
+#
+# NOTE on $DBT_MANIFEST_PATH: if you `export` this in your shell rc, it
+# overrides the per-project lookup. The cache key downstream is keyed on the
+# resolved path -- so a sticky env var means `cd` between projects without
+# unsetting it makes completions follow the env var, not the new project.
+# This matches what the env var asks for, but is surprising if you forgot
+# you set it.
 _dbt_manifest_path() {
     local project_dir
     project_dir="$(_get_project_root)"
