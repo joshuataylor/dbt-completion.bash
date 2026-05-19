@@ -18,14 +18,19 @@ zmodload -F zsh/stat b:zstat 2>/dev/null
 #
 # Uses scalar REPLY (zsh convention) instead of array `reply` to avoid
 # clobbering callers like _dbt_bin_info that themselves return via `reply`.
+#
+# Do NOT name the local variable `path` -- lowercase `path` in zsh is tied
+# to scalar PATH, so `local path=/some/file` silently destroys $PATH for
+# the duration of the function (and any sub-shells it forks for stat).
+# This actually bit us: `stat -c %Y` reported "command not found".
 _dbt_mtime() {
-    local path="$1" mtime=""
-    if (( ${+functions[zstat]} )); then
+    local target="$1" mtime=""
+    if (( ${+builtins[zstat]} )); then
         local -A st
-        zstat -H st +mtime "$path" 2>/dev/null && mtime=$st[mtime]
+        zstat -H st +mtime "$target" 2>/dev/null && mtime=$st[mtime]
     fi
-    [[ -z "$mtime" ]] && mtime=$(stat -c %Y "$path" 2>/dev/null)
-    [[ -z "$mtime" ]] && mtime=$(stat -f %m "$path" 2>/dev/null)
+    [[ -z "$mtime" ]] && mtime=$(stat -c %Y "$target" 2>/dev/null)
+    [[ -z "$mtime" ]] && mtime=$(stat -f %m "$target" 2>/dev/null)
     [[ -z "$mtime" ]] && return 1
     REPLY="$mtime"
 }
@@ -219,9 +224,11 @@ _get_project_root() {
 _dbt_manifest_path() {
     local project_dir
     project_dir="$(_get_project_root)"
-    local path="${DBT_MANIFEST_PATH:-${project_dir}/target/manifest.json}"
-    [[ -f "$path" ]] || return 1
-    printf '%s' "$path"
+    # NOTE: avoid `local path=` -- lowercase `path` is zsh-tied to $PATH and
+    # would silently destroy command lookup for the rest of the function.
+    local manifest="${DBT_MANIFEST_PATH:-${project_dir}/target/manifest.json}"
+    [[ -f "$manifest" ]] || return 1
+    printf '%s' "$manifest"
 }
 
 
