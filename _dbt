@@ -13,8 +13,11 @@ zstyle ':completion:*:complete:(dbt|dbtf):*' use-cache yes
 # filesystem info instead of an mtime.
 zmodload -F zsh/stat b:zstat 2>/dev/null
 
-# Fills $reply with the mtime of $1, or returns 1. Uses zstat if available,
+# Sets $REPLY to the mtime of $1, or returns 1. Uses zstat if available,
 # falls back to GNU stat, then BSD stat.
+#
+# Uses scalar REPLY (zsh convention) instead of array `reply` to avoid
+# clobbering callers like _dbt_bin_info that themselves return via `reply`.
 _dbt_mtime() {
     local path="$1" mtime=""
     if (( ${+functions[zstat]} )); then
@@ -24,7 +27,7 @@ _dbt_mtime() {
     [[ -z "$mtime" ]] && mtime=$(stat -c %Y "$path" 2>/dev/null)
     [[ -z "$mtime" ]] && mtime=$(stat -f %m "$path" 2>/dev/null)
     [[ -z "$mtime" ]] && return 1
-    reply=("$mtime")
+    REPLY="$mtime"
 }
 
 # OVERVIEW
@@ -230,9 +233,8 @@ _dbt_list_models() {
     manifest_path=$(_dbt_manifest_path) || return
 
     local manifest_mtime path_hash
-    local -a reply
     _dbt_mtime "$manifest_path" || return
-    manifest_mtime="${reply[1]}"
+    manifest_mtime="$REPLY"
     path_hash=$(printf '%s' "$manifest_path" | cksum); path_hash="${path_hash%% *}"
 
     typeset -ga _dbt_models_cache
@@ -263,9 +265,8 @@ _dbt_list_selectors() {
     manifest_path=$(_dbt_manifest_path) || return
 
     local manifest_mtime path_hash
-    local -a reply
     _dbt_mtime "$manifest_path" || return
-    manifest_mtime="${reply[1]}"
+    manifest_mtime="$REPLY"
     path_hash=$(printf '%s' "$manifest_path" | cksum); path_hash="${path_hash%% *}"
 
     typeset -ga _dbt_selectors_cache
@@ -285,10 +286,8 @@ _dbt_list_selectors() {
 _dbt_bin_info() {
     local bin_path
     bin_path=$(command -v dbt) || return 1
-    local -a reply
     _dbt_mtime "$bin_path" || return 1
-    local bin_mtime="${reply[1]}"
-    reply=("$bin_path" "$bin_mtime")
+    reply=("$bin_path" "$REPLY")
 }
 
 
@@ -327,9 +326,8 @@ _dbt_fusion_complete() {
     [[ -z "$bin_path" ]] && return 1
 
     local bin_mtime
-    local -a reply
     _dbt_mtime "$bin_path" || return 1
-    bin_mtime="${reply[1]}"
+    bin_mtime="$REPLY"
 
     local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}"
     local script_cache="$cache_dir/dbt_fusion_completions.zsh"
