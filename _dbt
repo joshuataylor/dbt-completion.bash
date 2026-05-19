@@ -438,7 +438,9 @@ _dbt_core_fetch_completions() {
     if ! _retrieve_cache "$cache_key"; then
         _dbt_response=$(env COMP_WORDS="$comp_words_str" COMP_CWORD="$comp_cword" \
             _DBT_COMPLETE=zsh_complete "$bin_path" 2>/dev/null)
-        _store_cache "$cache_key" _dbt_response
+        # Don't cache empty/failed responses: a transient venv breakage would
+        # otherwise pin "no completions" until the next binary mtime change.
+        [[ -n "$_dbt_response" ]] && _store_cache "$cache_key" _dbt_response
     fi
 }
 
