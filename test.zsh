@@ -279,8 +279,9 @@ _dbt_bin_info() {
 }
 
 _dbt_core_fetch_completions() {
-    _t_fetch_words="$2"
-    _t_fetch_cword="$3"
+    # signature: bin_path bin_mtime comp_words_str comp_cword
+    _t_fetch_words="$3"
+    _t_fetch_cword="$4"
     _t_fetch_calls=$(( _t_fetch_calls + 1 ))
     _dbt_response=""   # empty — _dbt_core_present_completions will no-op
 }

@@ -419,21 +419,26 @@ _dbt_core_build_comp_context() {
 
 
 # Invokes click to fetch completions for the given normalised context.
-# Uses zsh's native _retrieve_cache / _store_cache keyed by binary mtime +
-# context hash. Sets the global variable $_dbt_response.
-# Args: bin_mtime comp_words_str comp_cword
+# Uses zsh's native _retrieve_cache / _store_cache keyed by binary path hash +
+# binary mtime + context hash. Sets the global variable $_dbt_response.
+# Including the path hash mirrors _dbt_detect_type / _dbt_list_models and
+# prevents collisions across multiple dbt binaries that happen to share an mtime
+# (e.g. two venvs upgraded in the same second).
+# Args: bin_path bin_mtime comp_words_str comp_cword
 _dbt_core_fetch_completions() {
-    local bin_mtime="$1" comp_words_str="$2" comp_cword="$3"
+    local bin_path="$1" bin_mtime="$2" comp_words_str="$3" comp_cword="$4"
 
-    local ctx_hash
-    ctx_hash=$(printf '%s' "$comp_words_str" | cksum)
-    ctx_hash="${ctx_hash%% *}"
+    local path_hash ctx_hash
+    path_hash=$(printf '%s' "$bin_path" | cksum); path_hash="${path_hash%% *}"
+    ctx_hash=$(printf '%s' "$comp_words_str" | cksum); ctx_hash="${ctx_hash%% *}"
+
+    local cache_key="dbt_click_${path_hash}_${bin_mtime}_${ctx_hash}"
 
     typeset -g _dbt_response
-    if ! _retrieve_cache "dbt_click_${bin_mtime}_${ctx_hash}"; then
+    if ! _retrieve_cache "$cache_key"; then
         _dbt_response=$(env COMP_WORDS="$comp_words_str" COMP_CWORD="$comp_cword" \
-            _DBT_COMPLETE=zsh_complete dbt 2>/dev/null)
-        _store_cache "dbt_click_${bin_mtime}_${ctx_hash}" _dbt_response
+            _DBT_COMPLETE=zsh_complete "$bin_path" 2>/dev/null)
+        _store_cache "$cache_key" _dbt_response
     fi
 }
 
@@ -519,7 +524,7 @@ _dbt_core_present_completions() {
 #     a project session.
 _dbt_core_complete() {
     _dbt_bin_info || return 1
-    local bin_mtime="${reply[2]}"
+    local bin_path="${reply[1]}" bin_mtime="${reply[2]}"
 
     local current_word="${words[CURRENT]}"
     local prev_word=""
@@ -549,7 +554,7 @@ _dbt_core_complete() {
         comp_words_str="${reply[1]}" comp_cword="${reply[2]}" filter_word="${reply[3]}"
     fi
 
-    _dbt_core_fetch_completions "$bin_mtime" "$comp_words_str" "$comp_cword"
+    _dbt_core_fetch_completions "$bin_path" "$bin_mtime" "$comp_words_str" "$comp_cword"
     _dbt_core_present_completions "$_dbt_response" "$filter_word"
 }
 
