@@ -52,9 +52,10 @@ _dbt_mtime() {
 #
 # NOTE: This script uses the manifest (assumed to be at target/manifest.json)
 #       to _quickly_ provide a list of existing selectors. As such, a dbt
-#       resource must be compiled before it will be available for tab completion.
+#       resource must be parsed/compiled before it will be available for tab completion.
+#       > Note, a parse doesn't require a database connection, see https://docs.getdbt.com/reference/commands/parse.
 #       Brand new models/sources/tags/packages will not be displayed in the tab
-#       complete menu until they are compiled and appear in the manifest.
+#       complete menu until you have run `dbt parse` or a command that implies parsing (like `dbt compile`/`dbt run`).
 #
 # CREDITS
 #   Leveraging a lot of logic from dbt-completion.bash:
