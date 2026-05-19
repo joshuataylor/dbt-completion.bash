@@ -253,6 +253,13 @@ assert_eq "dbt run --log-format text" "${reply[1]}" "flag-value: flag included i
 assert_eq "3"                          "${reply[2]}" "flag-value: comp_cword = sub_cword+1"
 assert_eq ""                           "${reply[3]}" "flag-value: no filter_word"
 
+# flag-name AFTER a boolean flag: must normalise (the prev flag is irrelevant
+# because the current word starts with '-', so it can't be a value).
+_dbt_core_build_comp_context "--s" "--debug" "dbt run" "2"
+assert_eq "dbt run -" "${reply[1]}" "flag-after-flag: still normalises, ignoring prev flag"
+assert_eq "2"          "${reply[2]}" "flag-after-flag: comp_cword = sub_cword"
+assert_eq "--s"        "${reply[3]}" "flag-after-flag: filter_word preserved"
+
 # positional / subcommand
 _dbt_core_build_comp_context "run" "dbt" "dbt" "1"
 assert_eq "dbt run" "${reply[1]}" "positional: current word appended"

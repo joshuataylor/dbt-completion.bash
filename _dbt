@@ -413,15 +413,20 @@ _dbt_core_build_comp_context() {
     local current_word="$1" prev_word="$2" sub_context="$3" sub_cword="$4"
     local comp_words_str comp_cword filter_word=""
 
-    if [[ "$prev_word" == -* ]]; then
-        # Flag-value: include the flag so click returns the right choices.
-        comp_words_str="${sub_context} ${prev_word} ${current_word}"
-        comp_cword=$(( sub_cword + 1 ))
-    elif [[ "$current_word" == -* ]]; then
+    # Check current_word first: if the user is typing a flag (-foo), prev_word
+    # is irrelevant -- a flag name is never a value for another flag, and boolean
+    # flags like --debug don't accept a value at all. Treating "--debug --s" as
+    # "value for --debug" would force a fresh, useless Click call instead of
+    # reusing the cached flag-name list.
+    if [[ "$current_word" == -* ]]; then
         # Flag-name: normalise to "-" so all flags share one cache entry.
         comp_words_str="${sub_context} -"
         comp_cword=${sub_cword}
         filter_word="$current_word"
+    elif [[ "$prev_word" == -* ]]; then
+        # Flag-value: include the flag so click returns the right choices.
+        comp_words_str="${sub_context} ${prev_word} ${current_word}"
+        comp_cword=$(( sub_cword + 1 ))
     else
         # Subcommand or positional argument.
         comp_words_str="${sub_context} ${current_word}"
