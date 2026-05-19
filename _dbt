@@ -3,6 +3,26 @@
 # Enable zsh's native completion cache for all dbt completions.
 zstyle ':completion:*:complete:dbt:*' use-cache yes
 
+# Use zsh's stat module so we never fork stat(1). Avoids a real bug: with GNU
+# coreutils on the PATH (common on macOS via Homebrew), `stat -f` means
+# --file-system, not "format", and corrupts our cache keys with multi-line
+# filesystem info instead of an mtime.
+zmodload -F zsh/stat b:zstat 2>/dev/null
+
+# Fills $reply with the mtime of $1, or returns 1. Uses zstat if available,
+# falls back to GNU stat, then BSD stat.
+_dbt_mtime() {
+    local path="$1" mtime=""
+    if (( ${+functions[zstat]} )); then
+        local -A st
+        zstat -H st +mtime "$path" 2>/dev/null && mtime=$st[mtime]
+    fi
+    [[ -z "$mtime" ]] && mtime=$(stat -c %Y "$path" 2>/dev/null)
+    [[ -z "$mtime" ]] && mtime=$(stat -f %m "$path" 2>/dev/null)
+    [[ -z "$mtime" ]] && return 1
+    reply=("$mtime")
+}
+
 # OVERVIEW
 #   Adds autocompletion to dbt CLI by:
 #       1. Auto-detecting whether dbt is dbt-core (Click) or dbt-fusion (clap)
@@ -32,7 +52,7 @@ zstyle ':completion:*:complete:dbt:*' use-cache yes
 #   https://github.com/zsh-users/zsh-completions
 
 
-# ─── manifest parsing ────────────────────────────────────────────────────────
+# manifest parsing
 
 # Inline a python script so we can deploy this as a single file.
 _parse_manifest() {
@@ -199,7 +219,9 @@ _dbt_list_models() {
     manifest_path=$(_dbt_manifest_path) || return
 
     local manifest_mtime path_hash
-    manifest_mtime=$(stat -f %m "$manifest_path" 2>/dev/null || stat -c %Y "$manifest_path" 2>/dev/null)
+    local -a reply
+    _dbt_mtime "$manifest_path" || return
+    manifest_mtime="${reply[1]}"
     path_hash=$(printf '%s' "$manifest_path" | cksum); path_hash="${path_hash%% *}"
 
     typeset -ga _dbt_models_cache
@@ -230,7 +252,9 @@ _dbt_list_selectors() {
     manifest_path=$(_dbt_manifest_path) || return
 
     local manifest_mtime path_hash
-    manifest_mtime=$(stat -f %m "$manifest_path" 2>/dev/null || stat -c %Y "$manifest_path" 2>/dev/null)
+    local -a reply
+    _dbt_mtime "$manifest_path" || return
+    manifest_mtime="${reply[1]}"
     path_hash=$(printf '%s' "$manifest_path" | cksum); path_hash="${path_hash%% *}"
 
     typeset -ga _dbt_selectors_cache
@@ -243,20 +267,21 @@ _dbt_list_selectors() {
 }
 
 
-# ─── binary info ─────────────────────────────────────────────────────────────
+# binary info
 
 # Resolves the dbt binary path and mtime.
 # reply=(bin_path bin_mtime). Returns 1 if dbt is not in PATH.
 _dbt_bin_info() {
     local bin_path
     bin_path=$(command -v dbt) || return 1
-    local bin_mtime
-    bin_mtime=$(stat -f %m "$bin_path" 2>/dev/null || stat -c %Y "$bin_path" 2>/dev/null)
+    local -a reply
+    _dbt_mtime "$bin_path" || return 1
+    local bin_mtime="${reply[1]}"
     reply=("$bin_path" "$bin_mtime")
 }
 
 
-# ─── type detection ──────────────────────────────────────────────────────────
+# type detection
 
 # Detects whether dbt is dbt-core (click) or dbt-fusion (clap).
 # Prints "core" or "fusion". Cached by binary path + mtime.
@@ -281,7 +306,7 @@ _dbt_detect_type() {
 }
 
 
-# ─── dbt-fusion ──────────────────────────────────────────────────────────────
+# dbt-fusion
 
 # Sources the clap_complete-generated zsh script (cached by binary mtime) and
 # delegates to the _dbt_clap function it defines.
@@ -291,7 +316,9 @@ _dbt_fusion_complete() {
     [[ -z "$bin_path" ]] && return 1
 
     local bin_mtime
-    bin_mtime=$(stat -f %m "$bin_path" 2>/dev/null || stat -c %Y "$bin_path" 2>/dev/null)
+    local -a reply
+    _dbt_mtime "$bin_path" || return 1
+    bin_mtime="${reply[1]}"
 
     local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}"
     local script_cache="$cache_dir/dbt_fusion_completions.zsh"
@@ -313,7 +340,7 @@ _dbt_fusion_complete() {
 }
 
 
-# ─── dbt-core (click) ────────────────────────────────────────────────────────
+# dbt-core (click)
 #
 # Completion for dbt-core is cached at the level of the normalised completion
 # context, not the full command line. Prior flags are stripped from COMP_WORDS
@@ -523,7 +550,7 @@ _dbt_core_complete() {
 }
 
 
-# ─── main ─────────────────────────────────────────────────────────────────────
+# main
 
 # Auto-detects dbt-core vs dbt-fusion and routes to the appropriate completion
 # backend. Manifest-based model/selector completions are applied for both.
