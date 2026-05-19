@@ -68,8 +68,9 @@ _dbt_mtime() {
 
 # Inline a python script so we can deploy this as a single file.
 _parse_manifest() {
-manifest_path=$1
-prefix=$2
+local manifest_path=$1
+local prefix=$2
+local prog
 prog=$(cat <<EOF
 # Use a big try/catch so any errors (maybe from a corrupted or
 # missing manifest?) are not printed on tab-complete
@@ -164,7 +165,8 @@ cat "$manifest_path" | python3 -c "$prog" $prefix
 
 
 _parse_selectors() {
-manifest_path=$1
+local manifest_path=$1
+local prog
 prog=$(cat <<EOF
 # Use a big try/catch so any errors (maybe from a corrupted or
 # missing manifest?) are not printed on tab-complete
