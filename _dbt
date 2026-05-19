@@ -283,8 +283,11 @@ _dbt_list_selectors() {
 # Resolves the dbt binary path and mtime.
 # reply=(bin_path bin_mtime). Returns 1 if dbt is not in PATH.
 _dbt_bin_info() {
-    local bin_path
-    bin_path=$(command -v dbt) || return 1
+    # $commands is a zsh associative array mapping command names to their
+    # resolved $PATH location, populated lazily by compinit. Avoids the
+    # $(command -v …) subshell fork that we'd otherwise pay on every TAB.
+    local bin_path=$commands[dbt]
+    [[ -n $bin_path ]] || return 1
     _dbt_mtime "$bin_path" || return 1
     reply=("$bin_path" "$REPLY")
 }
@@ -321,7 +324,7 @@ _dbt_detect_type() {
 # delegates to the _dbt_clap function it defines.
 # Accepts an optional explicit binary path (used when completing the dbtf alias).
 _dbt_fusion_complete() {
-    local bin_path="${1:-$(command -v dbt)}"
+    local bin_path="${1:-$commands[dbt]}"
     [[ -z "$bin_path" ]] && return 1
 
     local bin_mtime
@@ -618,7 +621,7 @@ _dbt() {
         return $?
     fi
 
-    command -v dbt &>/dev/null || return 1
+    [[ -n $commands[dbt] ]] || return 1
 
     local dbt_type
     dbt_type=$(_dbt_detect_type)
