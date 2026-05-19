@@ -65,74 +65,70 @@ _dbt_mtime() {
 
 
 # manifest parsing
+#
+# Inline two python programs so we can ship this as a single file. The
+# programs are stored in module-level scalars (evaluated once when the script
+# is sourced) rather than rebuilt from a here-doc on every TAB press.
+# Python is invoked with the manifest path as argv[1] -- no `cat | python3`
+# pipeline, saves one fork per cold call.
 
-# Inline a python script so we can deploy this as a single file.
-_parse_manifest() {
-local manifest_path=$1
-local prefix=$2
-local prog
-prog=$(cat <<EOF
+typeset -g _DBT_PARSE_MANIFEST_PY='
 # Use a big try/catch so any errors (maybe from a corrupted or
-# missing manifest?) are not printed on tab-complete
-
+# missing manifest?) are not printed on tab-complete.
+# argv[1] = manifest path; argv[2] = optional prefix (default "")
 try:
-    import fileinput, json, sys
+    import json, sys
 
-    # If a prefix is given as an argument, include it in the
-    # generated selector list. The bash completion logic below
-    # will match these generated selectors against partially
-    # written args when table completed. This helps the script
-    # match selectors when a user does something like:
-    #   dbt run --models +order<tab>
+    manifest_path = sys.argv[1]
+    prefix = sys.argv[2] if len(sys.argv) >= 3 else ""
 
-    prefix = sys.argv.pop() if len(sys.argv) == 2 else ""
-
-    manifest = json.loads("\n".join([line for line in fileinput.input()]))
+    with open(manifest_path) as f:
+        manifest = json.load(f)
 
     models = set(
-        "{}{}".format(prefix, node['name'])
-        for node in manifest['nodes'].values()
-        if node['resource_type'] in ['model', 'seed']
+        "{}{}".format(prefix, node["name"])
+        for node in manifest["nodes"].values()
+        if node["resource_type"] in ["model", "seed"]
     )
 
     tags = set(
         "{}tag:{}".format(prefix, tag)
-        for node in manifest['nodes'].values()
-        for tag in node.get('tags', [])
-        if node['resource_type'] == 'model'
+        for node in manifest["nodes"].values()
+        for tag in node.get("tags", [])
+        if node["resource_type"] == "model"
     )
 
     # The + prefix for sources is not sensible, but allowed.
-    # This script shouldn't be opinionated about these things
+    # This script shouldnt be opinionated about these things.
     sources = set(
-        "{}source:{}".format(prefix, node['source_name'])
-        for node in manifest['sources'].values()
-        if node['resource_type'] == 'source'
+        "{}source:{}".format(prefix, node["source_name"])
+        for node in manifest["sources"].values()
+        if node["resource_type"] == "source"
     ) | set(
-        "{}source:{}.{}".format(prefix, node['source_name'], node['name'])
-        for node in manifest['sources'].values()
-        if node['resource_type'] == 'source'
+        "{}source:{}.{}".format(prefix, node["source_name"], node["name"])
+        for node in manifest["sources"].values()
+        if node["resource_type"] == "source"
     )
 
     exposures = set(
-        "{}exposure:{}".format(prefix, node['name'])
-        for node in manifest['exposures'].values()
-        if node['resource_type'] == 'exposure'
+        "{}exposure:{}".format(prefix, node["name"])
+        for node in manifest["exposures"].values()
+        if node["resource_type"] == "exposure"
     )
 
     metrics = set(
-        "{}metric:{}".format(prefix, node['name'])
-        for node in manifest['metrics'].values()
-        if node['resource_type'] == 'metric'
+        "{}metric:{}".format(prefix, node["name"])
+        for node in manifest["metrics"].values()
+        if node["resource_type"] == "metric"
     )
 
-    # Generate partial Fully Qualified Names with a wildcard
-    # suffix. This matches things like directories and packag names
+    # Generate partial Fully Qualified Names with a wildcard suffix.
+    # This matches things like directories and package names.
     fqns = set(
-        "{}{}.*".format(prefix, ".".join(node['fqn'][:i-1]))
-        for node in manifest['nodes'].values()
-        for i in range(len(node.get('fqn', [])))
-        if node['resource_type'] == 'model'
+        "{}{}.*".format(prefix, ".".join(node["fqn"][:i-1]))
+        for node in manifest["nodes"].values()
+        for i in range(len(node.get("fqn", [])))
+        if node["resource_type"] == "model"
     )
 
     hard_coded = {
@@ -143,13 +139,13 @@ try:
         "{}state:new".format(prefix),
         "{}state:modified".format(prefix),
         "{}result:error".format(prefix),
-        "{}result:fail".format(prefix)
+        "{}result:fail".format(prefix),
     }
 
     selectors = [
-        selector.replace(':', r'\:')
+        selector.replace(":", r"\:")
         for selector in (models | tags | sources | exposures | metrics | fqns | hard_coded)
-        if selector != ''
+        if selector != ""
     ]
 
     print(" ".join(selectors))
@@ -157,31 +153,17 @@ except Exception as e:
     print(e)
     # oops!
     pass
-EOF
-)
+'
 
-cat "$manifest_path" | python3 -c "$prog" $prefix
-}
-
-
-_parse_selectors() {
-local manifest_path=$1
-local prog
-prog=$(cat <<EOF
-# Use a big try/catch so any errors (maybe from a corrupted or
-# missing manifest?) are not printed on tab-complete
-
+typeset -g _DBT_PARSE_SELECTORS_PY='
+# argv[1] = manifest path. No prefix is allowed for YAML selectors.
 try:
-    import fileinput, json, sys
+    import json, sys
 
-    # No prefix is allowed for YAML selectors
+    with open(sys.argv[1]) as f:
+        manifest = json.load(f)
 
-    manifest = json.loads("\n".join([line for line in fileinput.input()]))
-
-    selectors = set(
-        "{}".format(node['name'])
-        for node in manifest['selectors'].values()
-    )
+    selectors = set(node["name"] for node in manifest["selectors"].values())
 
     if selectors:
         print(" ".join(selectors))
@@ -189,12 +171,20 @@ try:
         print("")
 except Exception as e:
     print(e)
-    # oops!
     pass
-EOF
-)
+'
 
-cat "$manifest_path" | python3 -c "$prog"
+
+_parse_manifest() {
+    local manifest_path=$1
+    local prefix=$2
+    python3 -c "$_DBT_PARSE_MANIFEST_PY" "$manifest_path" "$prefix"
+}
+
+
+_parse_selectors() {
+    local manifest_path=$1
+    python3 -c "$_DBT_PARSE_SELECTORS_PY" "$manifest_path"
 }
 
 
