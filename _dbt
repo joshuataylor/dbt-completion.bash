@@ -326,20 +326,22 @@ _dbt_fusion_complete() {
 
     local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}"
     local script_cache="$cache_dir/dbt_fusion_completions.zsh"
+    local sourced_cache="$cache_dir/dbt_fusion_completions.sourced.zsh"
     local key_cache="$cache_dir/dbt_fusion_completions.key"
     local current_key="${bin_path}:${bin_mtime}"
 
     if [[ ! -f "$script_cache" ]] || [[ "$(cat "$key_cache" 2>/dev/null)" != "$current_key" ]]; then
         mkdir -p "$cache_dir"
         "$bin_path" completions zsh > "$script_cache" 2>/dev/null
+        # Pre-rename _dbt() -> _dbt_clap() once per binary upgrade so we don't
+        # fork sed on every TAB. Sourced directly below.
+        sed 's/^_dbt()/_dbt_clap()/' "$script_cache" > "$sourced_cache"
         printf '%s' "$current_key" > "$key_cache"
     fi
 
-    # Source the clap-generated script; rename its _dbt() to _dbt_clap() so it
-    # doesn't clobber this completion function, then call it.
-    local script_content
-    script_content=$(sed 's/^_dbt()/_dbt_clap()/' "$script_cache")
-    eval "$script_content"
+    # Source the renamed clap-generated script so it defines _dbt_clap (not _dbt,
+    # which would clobber this completion function), then call it.
+    source "$sourced_cache"
     _dbt_clap "$@"
 }
 
